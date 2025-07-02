@@ -4,12 +4,12 @@ import tempfile
 import os
 import pandas as pd
 
-def search_keyword_in_xml(folder_path, keyword):
+def search_keyword_in_files(folder_path, keyword):
     results = []
 
     for root, dirs, files in os.walk(folder_path):
         for file in files:
-            if file.endswith(".xml"):
+            if file.endswith((".xml", ".html")):
                 full_path = os.path.join(root, file)
                 relative_path = os.path.relpath(full_path, folder_path)
                 try:
@@ -25,42 +25,49 @@ def search_keyword_in_xml(folder_path, keyword):
                     st.warning(f"Could not read file: {relative_path} — {e}")
     return pd.DataFrame(results)
 
-
 def main():
     st.set_page_config(page_title="XML Keyword Finder", layout="wide")
-    st.title("🔍 XML Keyword Search in Zipped Folder")
+    st.title("🔍 XML/HTML Keyword Search in Zipped Folder")
 
-    uploaded_zip = st.file_uploader("📁 Upload a zipped folder containing .xml files", type=["zip"])
+    uploaded_zip = st.file_uploader("📁 Upload a zipped folder containing .xml/.html files", type=["zip"])
     keyword = st.text_input("🔑 Enter keyword to search")
 
-    if uploaded_zip and keyword:
+    search_button = st.button("🔍 Search")
+
+    if search_button:
+        if not uploaded_zip or not keyword.strip():
+            st.warning("Please upload a ZIP file and enter a keyword.")
+            return
+
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = os.path.join(tmpdir, "uploaded.zip")
 
+            # Save uploaded ZIP
             with open(zip_path, "wb") as f:
                 f.write(uploaded_zip.read())
 
+            # Extract ZIP
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(tmpdir)
 
-            st.info("🔎 Searching keyword... This may take a few seconds...")
-            df_results = search_keyword_in_xml(tmpdir, keyword)
+            st.info("Searching... Please wait ⏳")
+            df_results = search_keyword_in_files(tmpdir, keyword.strip())
 
             if not df_results.empty:
                 st.success(f"✅ Found {len(df_results)} matching lines!")
                 st.dataframe(df_results, use_container_width=True)
 
-                # Download CSV
+                # CSV download
                 csv = df_results.to_csv(index=False).encode('utf-8')
                 st.download_button("⬇️ Download CSV", csv, file_name="search_results.csv", mime="text/csv")
 
-                # Download Excel
+                # Excel download
                 excel_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
                 df_results.to_excel(excel_file.name, index=False)
                 with open(excel_file.name, 'rb') as f:
                     st.download_button("⬇️ Download Excel", f.read(), file_name="search_results.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             else:
-                st.warning("❌ No matching keyword found in any .xml file.")
+                st.warning("❌ No matching keyword found in any .xml or .html file.")
 
 if __name__ == "__main__":
     main()
