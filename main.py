@@ -41,7 +41,7 @@ def fetch_guids_soap(env_url, username, password, user_list_str):
     """Calls BIP SOAP service using the parameter items"""
     full_url = env_url.rstrip("/") + "/xmlpserver/services/ExternalReportWSSService"
     # Ensure this path matches exactly where you saved the report
-    report_path = "/Custom/Human Capital Management/User_GUID_Report.xdo"
+    report_path = "/Custom/Human Capital Management/PASSWORD/User_GUID_Report.xdo"
     
     # Cleaning the input string to remove spaces after commas
     clean_user_list = ",".join([u.strip() for u in user_list_str.split(",")])
