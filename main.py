@@ -40,7 +40,7 @@ def generate_secure_password(length=12):
 def fetch_guids_soap(env_url, username, password, user_list_str):
     """Calls BIP SOAP service to resolve Usernames to GUIDs."""
     full_url = env_url.rstrip("/") + "/xmlpserver/services/ExternalReportWSSService"
-    report_path = "/Custom/Human Capital Management/User_GUID_Report.xdo"
+    report_path = "/Custom/Human Capital Management/PASSWORD/User_GUID_Report.xdo"
     
     # Standard SOAP Envelope with Parameter passing
     soap_request = f"""
