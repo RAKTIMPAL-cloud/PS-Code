@@ -8,21 +8,21 @@ import json
 import secrets
 import string
 
-# Configuration and Page Setup
 st.set_page_config(page_title="HCM Bulk Password Reset", layout="wide")
 st.title("🔐 HCM Bulk Password Reset Tool")
-st.markdown("---")
 
-# 1. Inputs: Connection Details
-col1, col2 = st.columns(2)
-with col1:
+# Sidebar for Credentials
+with st.sidebar:
+    st.header("⚙️ Connection Settings")
     env_url = st.text_input("🌐 Environment URL", "https://iavnqy-dev2.fa.ocs.oraclecloud.com")
     username = st.text_input("👤 Admin Username")
-with col2:
     password = st.text_input("🔑 Admin Password", type="password")
-    user_input = st.text_area("👥 Target Usernames (Comma Separated)", placeholder="user1@example.com, user2@example.com")
 
-# --- Helper Functions ---
+# Main Input Area
+st.subheader("👥 Target Users")
+user_input = st.text_area("Enter Usernames (separated by commas)", 
+                         placeholder="user1@example.com, user2@example.com",
+                         help="Ensure you use the SQL string splitting logic in your BIP Data Model.")
 
 def generate_secure_password(length=12):
     """Generates a policy-compliant password."""
@@ -38,11 +38,14 @@ def generate_secure_password(length=12):
     return "".join(pwd)
 
 def fetch_guids_soap(env_url, username, password, user_list_str):
-    """Calls BIP SOAP service to resolve Usernames to GUIDs."""
+    """Calls BIP SOAP service using the parameter items"""
     full_url = env_url.rstrip("/") + "/xmlpserver/services/ExternalReportWSSService"
-    report_path = "/Custom/Human Capital Management/PASSWORD/User_GUID_Report.xdo"
+    # Ensure this path matches exactly where you saved the report
+    report_path = "/Custom/Human Capital Management/User_GUID_Report.xdo"
     
-    # Standard SOAP Envelope with Parameter passing
+    # Cleaning the input string to remove spaces after commas
+    clean_user_list = ",".join([u.strip() for u in user_list_str.split(",")])
+
     soap_request = f"""
     <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:pub="http://xmlns.oracle.com/oxp/service/PublicReportService">
        <soap:Header/>
@@ -55,7 +58,7 @@ def fetch_guids_soap(env_url, username, password, user_list_str):
                     <pub:item>
                         <pub:name>p_usernames</pub:name>
                         <pub:values>
-                            <pub:item>{user_list_str}</pub:item>
+                            <pub:item>{clean_user_list}</pub:item>
                         </pub:values>
                     </pub:item>
                 </pub:parameterNameValues>
@@ -66,29 +69,27 @@ def fetch_guids_soap(env_url, username, password, user_list_str):
     </soap:Envelope>
     """
     
+    auth_header = base64.b64encode(f"{username}:{password}".encode()).decode()
     headers = {
         "Content-Type": "application/soap+xml; charset=utf-8",
-        "Authorization": f"Basic {base64.b64encode(f'{username}:{password}'.encode()).decode()}"
+        "Authorization": f"Basic {auth_header}"
     }
 
     try:
         response = requests.post(full_url, data=soap_request, headers=headers)
         if response.status_code == 200:
             root = ET.fromstring(response.content)
-            # Use namespace searching from original main.py
             ns = {'ns': 'http://xmlns.oracle.com/oxp/service/PublicReportService'}
             report_bytes = root.find('.//ns:reportBytes', ns)
-            
             if report_bytes is not None and report_bytes.text:
                 return base64.b64decode(report_bytes.text).decode("utf-8")
-        st.error(f"SOAP Error: {response.status_code}")
         return None
     except Exception as e:
-        st.error(f"Connection Error: {str(e)}")
+        st.error(f"SOAP Connection Error: {e}")
         return None
 
 def call_scim_bulk_api(env_url, username, password, guid_df):
-    """Performs the Bulk PATCH operation via REST."""
+    """Sends the Bulk SCIM PATCH request."""
     scim_url = env_url.rstrip("/") + "/hcmRestApi/scim/Bulk"
     new_password = generate_secure_password()
     
@@ -105,62 +106,46 @@ def call_scim_bulk_api(env_url, username, password, guid_df):
         })
 
     payload = {"Operations": operations}
-    
-    response = requests.post(
-        scim_url, 
-        json=payload, 
-        auth=(username, password),
-        headers={"Content-Type": "application/json"}
-    )
+    response = requests.post(scim_url, json=payload, auth=(username, password))
     return response, new_password
-
-# --- Main Execution Trigger ---
 
 if st.button("🚀 Execute Bulk Password Reset"):
     if not (username and password and user_input):
-        st.warning("⚠️ Please fill in credentials and usernames.")
+        st.warning("⚠️ Please provide admin credentials and target usernames.")
     else:
-        # Step 1: Get GUIDs
-        with st.spinner("🔍 Fetching GUIDs from Oracle..."):
+        with st.spinner("Step 1: Fetching User GUIDs..."):
             csv_data = fetch_guids_soap(env_url, username, password, user_input)
             
             if csv_data:
                 df = pd.read_csv(StringIO(csv_data))
-                # Cleanup column names
-                df.columns = [c.strip().upper() for c in df.columns]
+                df.columns = [c.strip().upper() for c in df.columns] #
                 
+                # Filter out any rows where GUID is missing
                 if 'USER_GUID' in df.columns and not df.empty:
-                    st.write(f"✅ Found {len(df)} users. Starting reset...")
+                    st.info(f"✅ Found {len(df)} matching users in Oracle.")
                     
-                    # Step 2: Bulk Reset
-                    with st.spinner("⚡ Resetting passwords via SCIM..."):
-                        res, new_pwd = call_scim_bulk_api(env_url, username, password, df)
+                    with st.spinner("Step 2: Resetting Passwords via SCIM Bulk API..."):
+                        res, common_pwd = call_scim_bulk_api(env_url, username, password, df)
                         
                         if res.status_code in [200, 201]:
-                            st.success(f"🎊 Success! All users reset to: `{new_pwd}`")
+                            st.success(f"🎊 Process Complete! All users reset to: `{common_pwd}`")
                             
-                            # Step 3: Parse Results
+                            # Detailed Status Table
                             results = res.json().get("Operations", [])
-                            status_data = []
+                            status_list = []
                             for op in results:
-                                status_data.append({
+                                status_list.append({
                                     "Username": op.get("bulkId"),
-                                    "Status Code": op.get("status", {}).get("code"),
-                                    "Result": "Success" if str(op.get("status", {}).get("code")).startswith("2") else "Failed"
+                                    "Status": "Success" if str(op.get("status", {}).get("code")).startswith("2") else "Failed",
+                                    "Details": op.get("status", {}).get("code")
                                 })
-                            st.table(pd.DataFrame(status_data))
+                            st.table(pd.DataFrame(status_list))
                         else:
-                            st.error(f"Bulk API Error: {res.status_code}")
+                            st.error(f"SCIM Bulk Error: {res.status_code}")
                             st.json(res.json())
                 else:
-                    st.error("❌ No matching users found in PER_USERS.")
+                    st.error("❌ No matching users found. Check if usernames are correct and update your BIP SQL logic.")
             else:
-                st.error("❌ Could not retrieve report data. Check your Report Path.")
+                st.error("❌ Failed to communicate with BIP Report.")
 
-# Footer
-st.markdown("""
-<hr style="margin-top: 50px;">
-<div style='text-align: center; color: gray; font-size: 0.85em;'>
-    <p>© 2025 Automation Tool • Powered by SCIM Bulk API</p>
-</div>
-""", unsafe_allow_html=True)
+st.markdown('<div style="text-align: center; color: gray; margin-top: 50px;">© 2025 Raktim Pal | HCM Automation</div>', unsafe_allow_html=True)
