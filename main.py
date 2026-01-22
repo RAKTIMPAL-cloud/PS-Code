@@ -184,7 +184,7 @@ if st.button("🚀 Execute Bulk Password Reset"):
 # Footer
 st.markdown("""
 <hr style="margin-top: 50px;">
-<div style='text-align: center; color: gray; font-size: 0.85em;'>
+<div style='text-align: center; color: yellow; font-size: 0.85em;'>
     <p>© 2025 Raktim Pal | HCM Automation Suite</p>
 </div>
 """, unsafe_allow_html=True)
