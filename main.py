@@ -9,7 +9,7 @@ import secrets
 import string
 
 # --- App Configuration ---
-st.set_page_config(page_title="HCM Bulk Password Reset", layout="wide")
+st.set_page_config(page_title="Oracle HCM SecureReset Pro", layout="wide")
 st.title("🔐 HCM Bulk Password Reset Tool")
 
 # --- UI Layout: Connection & Inputs ---
@@ -170,6 +170,6 @@ st.markdown("""
 <hr style="margin-top: 50px;">
 <div style='text-align: center; color: yellow; font-size: 0.85em;'>
     <p>App has been developed by <strong>Raktim Pal</strong></p>
-    <p>© 2025 Raktim Pal. All rights reserved.</p>
+    <p>© 2026 Raktim Pal. All rights reserved.</p>
 </div>
 """, unsafe_allow_html=True)
