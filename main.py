@@ -10,7 +10,7 @@ import string
 
 # --- App Configuration ---
 st.set_page_config(page_title="Oracle HCM SecureReset Pro", layout="wide")
-st.title("🔐 HCM Bulk Password Reset Tool")
+st.title("🔐 Oracle HCM SecureReset Pro")
 
 # --- UI Layout: Connection & Inputs ---
 col1, col2 = st.columns([1, 1])
