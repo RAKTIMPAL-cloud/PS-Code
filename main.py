@@ -49,7 +49,6 @@ def fetch_guids_soap(env_url, admin_user, admin_pwd, user_list_str):
     full_url = env_url.rstrip("/") + "/xmlpserver/services/ExternalReportWSSService"
     report_path = "/Custom/Human Capital Management/PASSWORD/User_GUID_Report.xdo"
     
-    # Ensure usernames are cleaned for the SOAP payload
     clean_user_list = ",".join([u.strip() for u in user_list_str.split(",") if u.strip()])
 
     soap_request = f"""
@@ -85,14 +84,12 @@ def fetch_guids_soap(env_url, admin_user, admin_pwd, user_list_str):
         response = requests.post(full_url, data=soap_request, headers=headers)
         if response.status_code == 200:
             root = ET.fromstring(response.content)
-            # Use namespace from original source
             ns = {'ns': 'http://xmlns.oracle.com/oxp/service/PublicReportService'}
             report_bytes = root.find('.//ns:reportBytes', ns)
             if report_bytes is not None and report_bytes.text:
                 return base64.b64decode(report_bytes.text).decode("utf-8")
         return None
-    except Exception as e:
-        st.error(f"SOAP Connection Error: {e}")
+    except Exception:
         return None
 
 def call_scim_bulk_api(env_url, admin_user, admin_pwd, guid_df):
@@ -125,29 +122,24 @@ def call_scim_bulk_api(env_url, admin_user, admin_pwd, guid_df):
 
 if st.button("🚀 Execute Bulk Password Reset"):
     if not (username and password and user_input):
-        st.warning("⚠️ Please provide all credentials and at least one username.")
+        st.warning("⚠️ Please provide all credentials and target usernames.")
     else:
-        # STEP 1: Fetch GUIDs
         with st.spinner("🔍 Step 1: Querying Oracle for User GUIDs..."):
             csv_data = fetch_guids_soap(env_url, username, password, user_input)
             
             if csv_data:
                 df = pd.read_csv(StringIO(csv_data))
-                # Standardize columns
                 df.columns = [c.strip().upper() for c in df.columns]
                 
                 if 'USER_GUID' in df.columns and not df.empty:
                     st.info(f"✅ Found {len(df)} users in Fusion.")
                     
-                    # STEP 2: Trigger Reset
                     with st.spinner("⚡ Step 2: Resetting Passwords via SCIM Bulk API..."):
                         res, common_pwd = call_scim_bulk_api(env_url, username, password, df)
                         
-                        # Handle Success
                         if res.status_code in [200, 201]:
                             st.success(f"🎊 Bulk Reset Complete! Temporary Password: `{common_pwd}`")
                             
-                            # Parse result table
                             results = res.json().get("Operations", [])
                             status_rows = []
                             for op in results:
@@ -158,33 +150,26 @@ if st.button("🚀 Execute Bulk Password Reset"):
                                 })
                             st.table(pd.DataFrame(status_rows))
                         
-                        # Handle Errors Gracefully
                         else:
+                            # friendly error mapping
                             error_messages = {
                                 401: "🚫 **Unauthorized**: Invalid Admin Username or Password.",
-                                403: "🛑 **Forbidden**: You lack 'Security Console Administrator' or 'Identity Domain' roles.",
+                                403: "🛑 **Forbidden**: You do not have the required roles (Security Console Administrator or Identity Domain Admin) to perform this action.",
                                 404: "🌐 **Not Found**: The SCIM REST endpoint was not found at this URL.",
                                 500: "⚙️ **Internal Server Error**: Oracle Fusion had a problem processing this request."
                             }
-                            
                             friendly_err = error_messages.get(res.status_code, f"⚠️ **Request Failed (Status: {res.status_code})**")
                             st.error(friendly_err)
-                            
-                            # Safe Debugging: Don't crash on res.json()
-                            with st.expander("View Technical Error Log"):
-                                try:
-                                    st.json(res.json())
-                                except:
-                                    st.code(res.text[:1000], language="html")
                 else:
-                    st.error("❌ No matching users found in PER_USERS. Check usernames or SQL logic.")
+                    st.error("❌ No matching users found in PER_USERS. Please check the usernames.")
             else:
-                st.error("❌ Could not connect to the BIP report. Verify the report path.")
+                st.error("❌ Could not connect to the BIP report. Verify the report path and credentials.")
 
 # Footer
 st.markdown("""
 <hr style="margin-top: 50px;">
 <div style='text-align: center; color: yellow; font-size: 0.85em;'>
-    <p>© 2025 Raktim Pal | HCM Automation Suite</p>
+    <p>App has been developed by <strong>Raktim Pal</strong></p>
+    <p>© 2025 Raktim Pal. All rights reserved.</p>
 </div>
 """, unsafe_allow_html=True)
