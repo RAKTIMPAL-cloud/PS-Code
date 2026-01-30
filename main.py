@@ -84,7 +84,6 @@ def fetch_guids_soap(env_url, admin_user, admin_pwd, user_list_str):
         response = requests.post(full_url, data=soap_request, headers=headers)
         if response.status_code == 200:
             root = ET.fromstring(response.content)
-            # Use namespace searching from BIP report bytes
             ns = {'ns': 'http://xmlns.oracle.com/oxp/service/PublicReportService'}
             report_bytes = root.find('.//ns:reportBytes', ns)
             if report_bytes is not None and report_bytes.text:
@@ -156,15 +155,15 @@ if st.button("🚀 Execute Bulk Password Reset"):
                             results = res.json().get("Operations", [])
                             status_rows = []
                             for op in results:
+                                status_code = str(op.get("status", {}).get("code"))
+                                outcome_msg = "✅ Password has been reset successfully" if status_code.startswith("2") else "❌ Password reset failed"
                                 status_rows.append({
                                     "Username": op.get("bulkId"),
-                                    "HTTP Status": op.get("status", {}).get("code"),
-                                    "Outcome": "✅ Success" if str(op.get("status", {}).get("code")).startswith("2") else "❌ Failed"
+                                    "Outcome": outcome_msg
                                 })
                             st.table(pd.DataFrame(status_rows))
                         
                         else:
-                            # Friendly error mapping for end users
                             error_messages = {
                                 401: "🚫 **Unauthorized**: Invalid Admin Username or Password.",
                                 403: "🛑 **Forbidden**: You do not have the required roles (Security Console Administrator or Identity Domain Admin) to perform this action.",
