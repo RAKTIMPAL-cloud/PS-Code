@@ -10,6 +10,17 @@ import string
 
 # --- App Configuration ---
 st.set_page_config(page_title="Oracle HCM SecureReset Pro", layout="wide")
+
+# --- Logo Header Section ---
+# Using columns to place logos at the top
+log_col1, log_col2, log_col3 = st.columns([1, 4, 1])
+with log_col1:
+    # Oracle Logo
+    st.image("https://upload.wikimedia.org/wikipedia/commons/5/50/Oracle_logo.svg", width=150)
+with log_col3:
+    # IBM Logo
+    st.image("https://upload.wikimedia.org/wikipedia/commons/5/51/IBM_logo.svg", width=120)
+
 st.title("🔐 Oracle HCM SecureReset Pro")
 
 # --- UI Layout: Connection & Inputs ---
@@ -84,6 +95,7 @@ def fetch_guids_soap(env_url, admin_user, admin_pwd, user_list_str):
         response = requests.post(full_url, data=soap_request, headers=headers)
         if response.status_code == 200:
             root = ET.fromstring(response.content)
+            # Find report bytes using the BIP namespace
             ns = {'ns': 'http://xmlns.oracle.com/oxp/service/PublicReportService'}
             report_bytes = root.find('.//ns:reportBytes', ns)
             if report_bytes is not None and report_bytes.text:
@@ -129,7 +141,7 @@ if st.button("🚀 Execute Bulk Password Reset"):
             
             if csv_data:
                 df = pd.read_csv(StringIO(csv_data))
-                # Cleanup column names for data consistency
+                # Standardize column names
                 df.columns = [c.strip().upper() for c in df.columns]
                 
                 if 'USER_GUID' in df.columns and not df.empty:
@@ -151,11 +163,12 @@ if st.button("🚀 Execute Bulk Password Reset"):
                             
                             st.success("🎊 Bulk Reset Process Completed Successfully!")
                             
-                            # Results Table
+                            # Results Table - "HTTP Status" Column Removed
                             results = res.json().get("Operations", [])
                             status_rows = []
                             for op in results:
                                 status_code = str(op.get("status", {}).get("code"))
+                                # Updated outcome message
                                 outcome_msg = "✅ Password has been reset successfully" if status_code.startswith("2") else "❌ Password reset failed"
                                 status_rows.append({
                                     "Username": op.get("bulkId"),
