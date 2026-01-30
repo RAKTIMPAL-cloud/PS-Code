@@ -12,13 +12,10 @@ import string
 st.set_page_config(page_title="Oracle HCM SecureReset Pro", layout="wide")
 
 # --- Logo Header Section ---
-# Using columns to place logos at the top
 log_col1, log_col2, log_col3 = st.columns([1, 4, 1])
 with log_col1:
-    # Oracle Logo
     st.image("https://upload.wikimedia.org/wikipedia/commons/5/50/Oracle_logo.svg", width=150)
 with log_col3:
-    # IBM Logo
     st.image("https://upload.wikimedia.org/wikipedia/commons/5/51/IBM_logo.svg", width=120)
 
 st.title("🔐 Oracle HCM SecureReset Pro")
@@ -95,7 +92,6 @@ def fetch_guids_soap(env_url, admin_user, admin_pwd, user_list_str):
         response = requests.post(full_url, data=soap_request, headers=headers)
         if response.status_code == 200:
             root = ET.fromstring(response.content)
-            # Find report bytes using the BIP namespace
             ns = {'ns': 'http://xmlns.oracle.com/oxp/service/PublicReportService'}
             report_bytes = root.find('.//ns:reportBytes', ns)
             if report_bytes is not None and report_bytes.text:
@@ -104,20 +100,24 @@ def fetch_guids_soap(env_url, admin_user, admin_pwd, user_list_str):
     except Exception:
         return None
 
-def call_scim_bulk_api(env_url, admin_user, admin_pwd, guid_df):
-    """Executes Bulk PATCH via SCIM REST API."""
+def call_scim_bulk_api_unique(env_url, admin_user, admin_pwd, guid_df):
+    """Executes Bulk PATCH via SCIM REST API with UNIQUE passwords per user."""
     scim_url = env_url.rstrip("/") + "/hcmRestApi/scim/Bulk"
-    new_password = generate_secure_password()
     
     operations = []
+    pwd_mapping = {} # Store passwords to show in result table
+    
     for _, row in guid_df.iterrows():
+        unique_pwd = generate_secure_password()
+        pwd_mapping[str(row['USERNAME'])] = unique_pwd
+        
         operations.append({
             "method": "PATCH",
             "path": f"/Users/{row['USER_GUID']}",
             "bulkId": str(row['USERNAME']),
             "data": {
                 "schemas": ["urn:scim:schemas:core:2.0:User"],
-                "password": new_password
+                "password": unique_pwd
             }
         })
 
@@ -128,7 +128,7 @@ def call_scim_bulk_api(env_url, admin_user, admin_pwd, guid_df):
         auth=(admin_user, admin_pwd),
         headers={"Content-Type": "application/json"}
     )
-    return response, new_password
+    return response, pwd_mapping
 
 # --- Main Logic ---
 
@@ -141,46 +141,48 @@ if st.button("🚀 Execute Bulk Password Reset"):
             
             if csv_data:
                 df = pd.read_csv(StringIO(csv_data))
-                # Standardize column names
                 df.columns = [c.strip().upper() for c in df.columns]
                 
                 if 'USER_GUID' in df.columns and not df.empty:
                     st.info(f"✅ Found {len(df)} users in Fusion.")
                     
                     with st.spinner("⚡ Step 2: Resetting Passwords via SCIM Bulk API..."):
-                        res, common_pwd = call_scim_bulk_api(env_url, username, password, df)
+                        res, pwd_map = call_scim_bulk_api_unique(env_url, username, password, df)
                         
                         if res.status_code in [200, 201]:
-                            # --- Custom Password Display Block ---
-                            st.markdown(f"""
-                                <div style="background-color: #fff9c4; padding: 20px; border-radius: 10px; border-left: 5px solid #fbc02d; margin-bottom: 20px;">
-                                    <span style="font-size: 24px; color: black;">🔑 Temporary Password: </span>
-                                    <span style="background-color: yellow; color: black; font-weight: bold; font-size: 30px; padding: 5px 15px; border-radius: 5px; border: 1px solid #d4d400;">
-                                        {common_pwd}
-                                    </span>
-                                </div>
-                            """, unsafe_allow_html=True)
-                            
                             st.success("🎊 Bulk Reset Process Completed Successfully!")
                             
-                            # Results Table - "HTTP Status" Column Removed
+                            # Build Results Table
                             results = res.json().get("Operations", [])
                             status_rows = []
                             for op in results:
+                                u_name = op.get("bulkId")
                                 status_code = str(op.get("status", {}).get("code"))
-                                # Updated outcome message
-                                outcome_msg = "✅ Password has been reset successfully" if status_code.startswith("2") else "❌ Password reset failed"
+                                success = status_code.startswith("2")
+                                
                                 status_rows.append({
-                                    "Username": op.get("bulkId"),
-                                    "Outcome": outcome_msg
+                                    "Username": u_name,
+                                    "Outcome": "✅ Password has been reset successfully" if success else "❌ Password reset failed",
+                                    "Password": pwd_map.get(u_name) if success else "N/A"
                                 })
-                            st.table(pd.DataFrame(status_rows))
+                            
+                            result_df = pd.DataFrame(status_rows)
+                            st.table(result_df)
+                            
+                            # --- Download Section ---
+                            st.subheader("📥 Export Credentials")
+                            csv_download = result_df.to_csv(index=False).encode('utf-8')
+                            st.download_button(
+                                label="💾 Download Results as CSV",
+                                data=csv_download,
+                                file_name="HCM_Password_Reset_Report.csv",
+                                mime="text/csv",
+                            )
                         
                         else:
                             error_messages = {
                                 401: "🚫 **Unauthorized**: Invalid Admin Username or Password.",
                                 403: "🛑 **Forbidden**: You do not have the required roles (Security Console Administrator or Identity Domain Admin) to perform this action.",
-                                404: "🌐 **Not Found**: The SCIM REST endpoint was not found at this URL.",
                                 500: "⚙️ **Internal Server Error**: Oracle Fusion had a problem processing this request."
                             }
                             friendly_err = error_messages.get(res.status_code, f"⚠️ **Request Failed (Status: {res.status_code})**")
