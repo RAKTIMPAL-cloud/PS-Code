@@ -84,6 +84,7 @@ def fetch_guids_soap(env_url, admin_user, admin_pwd, user_list_str):
         response = requests.post(full_url, data=soap_request, headers=headers)
         if response.status_code == 200:
             root = ET.fromstring(response.content)
+            # Use namespace searching from BIP report bytes
             ns = {'ns': 'http://xmlns.oracle.com/oxp/service/PublicReportService'}
             report_bytes = root.find('.//ns:reportBytes', ns)
             if report_bytes is not None and report_bytes.text:
@@ -129,6 +130,7 @@ if st.button("🚀 Execute Bulk Password Reset"):
             
             if csv_data:
                 df = pd.read_csv(StringIO(csv_data))
+                # Cleanup column names for data consistency
                 df.columns = [c.strip().upper() for c in df.columns]
                 
                 if 'USER_GUID' in df.columns and not df.empty:
@@ -138,8 +140,19 @@ if st.button("🚀 Execute Bulk Password Reset"):
                         res, common_pwd = call_scim_bulk_api(env_url, username, password, df)
                         
                         if res.status_code in [200, 201]:
-                            st.success(f"🎊 Bulk Reset Complete! Temporary Password: `{common_pwd}`")
+                            # --- Custom Password Display Block ---
+                            st.markdown(f"""
+                                <div style="background-color: #fff9c4; padding: 20px; border-radius: 10px; border-left: 5px solid #fbc02d; margin-bottom: 20px;">
+                                    <span style="font-size: 24px; color: black;">🔑 Temporary Password: </span>
+                                    <span style="background-color: yellow; color: black; font-weight: bold; font-size: 30px; padding: 5px 15px; border-radius: 5px; border: 1px solid #d4d400;">
+                                        {common_pwd}
+                                    </span>
+                                </div>
+                            """, unsafe_allow_html=True)
                             
+                            st.success("🎊 Bulk Reset Process Completed Successfully!")
+                            
+                            # Results Table
                             results = res.json().get("Operations", [])
                             status_rows = []
                             for op in results:
@@ -151,7 +164,7 @@ if st.button("🚀 Execute Bulk Password Reset"):
                             st.table(pd.DataFrame(status_rows))
                         
                         else:
-                            # friendly error mapping
+                            # Friendly error mapping for end users
                             error_messages = {
                                 401: "🚫 **Unauthorized**: Invalid Admin Username or Password.",
                                 403: "🛑 **Forbidden**: You do not have the required roles (Security Console Administrator or Identity Domain Admin) to perform this action.",
