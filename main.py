@@ -16,7 +16,7 @@ log_col1, log_col2, log_col3 = st.columns([1, 4, 1])
 with log_col1:
     st.image("https://upload.wikimedia.org/wikipedia/commons/5/50/Oracle_logo.svg", width=150)
 with log_col3:
-    st.image("https://www.ibm.com/brand/experience-guides/developer/b1db1ae501d522a1a4b49613fe07c9f1/01_8-bar-positive.svg", width=120)
+    st.image("https://www.ibm.com/brand/experience-guides/developer/8f4e3cc2b5d52354a6d43c8edba1e3c9/02_8-bar-reverse.svg", width=120)
 
 st.title("🔐 Oracle HCM SecureReset Pro")
 
