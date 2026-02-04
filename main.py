@@ -30,9 +30,13 @@ with col1:
     password = st.text_input("Admin Password", type="password")
 
 with col2:
-    st.subheader("👥 Password Configuration")
-    # NEW FIELD: Admin manual password choice
-    custom_common_pwd = st.text_input("Set Common Password for All Users", placeholder="Enter desired temporary password")
+    st.subheader("👥 Configuration")
+    # Manual Password field (Optional)
+    custom_common_pwd = st.text_input(
+        "Set Common Password (Optional)", 
+        placeholder="Leave blank to auto-generate unique passwords",
+        type="default"
+    )
     
     user_input = st.text_area(
         "Enter Usernames (comma separated)", 
@@ -41,6 +45,19 @@ with col2:
     )
 
 # --- Logic Functions ---
+
+def generate_secure_password(length=12):
+    """Generates a secure password meeting Oracle standard policy."""
+    alphabet = string.ascii_letters + string.digits + "!#$%"
+    pwd = [
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits),
+        secrets.choice("!#$%")
+    ]
+    pwd += [secrets.choice(alphabet) for _ in range(length - 4)]
+    secrets.SystemRandom().shuffle(pwd)
+    return "".join(pwd)
 
 def fetch_guids_soap(env_url, admin_user, admin_pwd, user_list_str):
     """Calls BIP SOAP service to resolve Usernames to GUIDs."""
@@ -90,19 +107,26 @@ def fetch_guids_soap(env_url, admin_user, admin_pwd, user_list_str):
     except Exception:
         return None
 
-def call_scim_bulk_api_manual(env_url, admin_user, admin_pwd, guid_df, manual_pwd):
-    """Executes Bulk PATCH via SCIM REST API with the ADMIN CHOSEN password."""
+def call_scim_bulk_api_hybrid(env_url, admin_user, admin_pwd, guid_df, manual_pwd):
+    """Executes Bulk PATCH with either a common password or unique generated ones."""
     scim_url = env_url.rstrip("/") + "/hcmRestApi/scim/Bulk"
     
     operations = []
+    pwd_mapping = {}
+    
     for _, row in guid_df.iterrows():
+        # If manual_pwd is provided use it, otherwise generate a unique one
+        assigned_pwd = manual_pwd if manual_pwd.strip() else generate_secure_password()
+        u_name = str(row['USERNAME'])
+        pwd_mapping[u_name] = assigned_pwd
+        
         operations.append({
             "method": "PATCH",
             "path": f"/Users/{row['USER_GUID']}",
-            "bulkId": str(row['USERNAME']),
+            "bulkId": u_name,
             "data": {
                 "schemas": ["urn:scim:schemas:core:2.0:User"],
-                "password": manual_pwd  # Passing the chosen password variable
+                "password": assigned_pwd
             }
         })
 
@@ -113,13 +137,13 @@ def call_scim_bulk_api_manual(env_url, admin_user, admin_pwd, guid_df, manual_pw
         auth=(admin_user, admin_pwd),
         headers={"Content-Type": "application/json"}
     )
-    return response
+    return response, pwd_mapping
 
 # --- Main Logic ---
 
 if st.button("🚀 Execute Bulk Password Reset"):
-    if not (username and password and user_input and custom_common_pwd):
-        st.warning("⚠️ Please provide all credentials, target usernames, and the new common password.")
+    if not (username and password and user_input):
+        st.warning("⚠️ Please provide credentials and target usernames.")
     else:
         with st.spinner("🔍 Step 1: Querying Oracle for User GUIDs..."):
             csv_data = fetch_guids_soap(env_url, username, password, user_input)
@@ -132,12 +156,13 @@ if st.button("🚀 Execute Bulk Password Reset"):
                     st.info(f"✅ Found {len(df)} users in Fusion.")
                     
                     with st.spinner("⚡ Step 2: Resetting Passwords via SCIM Bulk API..."):
-                        res = call_scim_bulk_api_manual(env_url, username, password, df, custom_common_pwd)
+                        # Determine password logic automatically
+                        res, pwd_map = call_scim_bulk_api_hybrid(env_url, username, password, df, custom_common_pwd)
                         
                         if res.status_code in [200, 201]:
                             st.success("🎊 Bulk Reset Process Completed Successfully!")
                             
-                            # Build Results Table
+                            # Results Table
                             results = res.json().get("Operations", [])
                             status_rows = []
                             for op in results:
@@ -147,35 +172,34 @@ if st.button("🚀 Execute Bulk Password Reset"):
                                 
                                 status_rows.append({
                                     "Username": u_name,
-                                    "Outcome": "✅ Password reset successful" if success else "❌ Reset failed",
-                                    "Assigned Password": custom_common_pwd if success else "N/A"
+                                    "Outcome": "✅ Password has been reset successfully" if success else "❌ Reset failed",
+                                    "Assigned Password": pwd_map.get(u_name) if success else "N/A"
                                 })
                             
                             result_df = pd.DataFrame(status_rows)
                             st.table(result_df)
                             
-                            # --- Download Section ---
+                            # Export Section
                             st.subheader("📥 Export Credentials")
                             csv_download = result_df.to_csv(index=False).encode('utf-8')
                             st.download_button(
                                 label="💾 Download Results as CSV",
                                 data=csv_download,
-                                file_name="HCM_Custom_Password_Reset.csv",
+                                file_name="HCM_Password_Reset_Report.csv",
                                 mime="text/csv",
                             )
-                        
                         else:
+                            # User-friendly error messages (redacted technical trace)
                             error_messages = {
                                 401: "🚫 **Unauthorized**: Invalid Admin Username or Password.",
-                                403: "🛑 **Forbidden**: You do not have the required roles.",
-                                500: "⚙️ **Internal Server Error**: Fusion API Error."
+                                403: "🛑 **Forbidden**: You do not have the required roles (Security Console Administrator or Identity Domain Admin) to perform this action.",
+                                500: "⚙️ **Internal Server Error**: Oracle Fusion HCM encountered an error."
                             }
-                            friendly_err = error_messages.get(res.status_code, f"⚠️ **Request Failed (Status: {res.status_code})**")
-                            st.error(friendly_err)
+                            st.error(error_messages.get(res.status_code, f"⚠️ **Request Failed (Status: {res.status_code})**"))
                 else:
-                    st.error("❌ No matching users found in Fusion.")
+                    st.error("❌ No matching users found. Please check your username list.")
             else:
-                st.error("❌ Could not connect to the BIP report. Verify credentials/path.")
+                st.error("❌ SOAP Connection failed. Verify report path and credentials.")
 
 # Footer
 st.markdown("""
