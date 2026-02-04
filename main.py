@@ -25,7 +25,7 @@ st.markdown("## 🔐 SecureReset Fusion Pro: Password Management Tool")
 st.markdown("""
 <div style='font-size: 20px; margin-bottom: 20px;'>
    [NOTE- For bulk user creation and role assignment, click 🔗 
-   <a href='https://hcm-password-reset.streamlit.app/' target='_blank' style='color: yellow; font-weight: bold; text-decoration: underline;'> SkyGate Fusion Pro: User & Role Management Tool
+   <a href='https://hcm-secure-reset-tool.streamlit.app/' target='_blank' style='color: yellow; font-weight: bold; text-decoration: underline;'> SkyGate Fusion Pro: User & Role Management Tool
    </a>]
 </div>
 """, unsafe_allow_html=True)
