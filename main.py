@@ -21,6 +21,15 @@ with log_col3:
 # Replace st.title with this:
 st.markdown("## 🔐 SecureReset Fusion Pro: Password Management Tool")
 
+# Add the hyperlink just below the title
+st.markdown("""
+<div style='font-size: 20px; margin-bottom: 20px;'>
+   [NOTE- For bulk user creation and role assignment, click 🔗 
+   <a href='https://hcm-password-reset.streamlit.app/' target='_blank' style='color: yellow; font-weight: bold; text-decoration: underline;'> SkyGate Fusion Pro: User & Role Management Tool
+   </a>]
+</div>
+""", unsafe_allow_html=True)
+
 # --- UI Layout: Connection & Inputs ---
 col1, col2 = st.columns([1, 1])
 
