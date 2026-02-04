@@ -18,7 +18,7 @@ with log_col1:
 with log_col3:
     st.image("https://www.ibm.com/brand/experience-guides/developer/8f4e3cc2b5d52354a6d43c8edba1e3c9/02_8-bar-reverse.svg", width=120)
 
-st.title("🔐 Oracle HCM SecureReset Pro")
+st.title("🔐 SecureReset Fusion Pro: Password Management Tool")
 
 # --- UI Layout: Connection & Inputs ---
 col1, col2 = st.columns([1, 1])
